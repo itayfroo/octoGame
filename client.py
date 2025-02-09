@@ -10,6 +10,8 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import pythoncom
 import sys
+from gtts.lang import tts_langs  # Import the supported languages from gTTS
+from gtts import lang
 
 # Create the Tkinter window.
 root = tk.Tk()
@@ -31,6 +33,7 @@ input_event = threading.Event()
 # Global variable to hold the input string.
 input_value = ""
 
+
 def send_input():
     """Called when the user clicks the Send button.
     This stores the complete entry text into input_value,
@@ -38,18 +41,21 @@ def send_input():
     global input_value
     input_value = user_input_var.get()
     user_input_var.set("")  # Clear the entry box.
-    input_event.set()         # Signal that input is ready.
+    input_event.set()  # Signal that input is ready.
+
 
 # The Send button uses the above callback.
 send_button = tk.Button(root, text="Send", command=send_input)
 send_button.pack()
 
+
 def get_input():
     """Waits until the Send button has been pressed and then returns the input."""
-    input_event.wait()      # Block until the event is set.
-    value = input_value    # Retrieve the stored input.
-    input_event.clear()    # Reset the event for future input.
+    input_event.wait()  # Block until the event is set.
+    value = input_value  # Retrieve the stored input.
+    input_event.clear()  # Reset the event for future input.
     return value
+
 
 #############################################
 # TTS and Animation Functions
@@ -67,18 +73,40 @@ def pyttsx3_tts(text, voice_index, speaking):
     engine.runAndWait()
     speaking[0] = False  # Stop the animation
 
-def gtts_tts(text, lang, speaking):
+
+def gtts_tts(text, lang_code, speaking):
     """Function for TTS using gTTS"""
-    tts = gTTS(text=text, lang=lang)
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    pygame.mixer.init()
-    pygame.mixer.music.load(fp, 'mp3')
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
+    try:
+        # Check if language code is supported
+        if lang_code not in lang.tts_langs():
+            raise ValueError(f"Unsupported language: {lang_code}")
+
+        tts = gTTS(text=text, lang=lang_code)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        pygame.mixer.init()
+        pygame.mixer.music.load(fp, 'mp3')
+        pygame.mixer.music.play()
+
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+
+    except ValueError as e:
+        print(e)  # Log the unsupported language
+        # Default to English if the language is unsupported
+        tts = gTTS(text=text, lang='en')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        pygame.mixer.init()
+        pygame.mixer.music.load(fp, 'mp3')
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+
     speaking[0] = False  # Stop the animation
+
 
 def animate_images(label, img1, img2, speaking):
     """While speaking, alternate between two images for a talking animation."""
@@ -92,7 +120,8 @@ def animate_images(label, img1, img2, speaking):
     # Reset to the default image when done.
     label.config(image=img1)
 
-def goofy_tts(text, label, img1, img2, lang="en", voice_index=0, use_gtts=False):
+
+def goofy_tts(text, label, img1, img2, lang="en", voice_index=0, use_gtts=True):
     """Start animation and TTS in separate threads."""
     speaking = [True]
     threading.Thread(target=animate_images, args=(label, img1, img2, speaking), daemon=True).start()
@@ -101,13 +130,14 @@ def goofy_tts(text, label, img1, img2, lang="en", voice_index=0, use_gtts=False)
     else:
         threading.Thread(target=pyttsx3_tts, args=(text, voice_index, speaking), daemon=True).start()
 
-def speak(label, img1, img2, text,lang):
+
+def speak(label, img1, img2, text, lang):
     """Convenience wrapper to start the TTS and image animation."""
-    goofy_tts(text, label, img1, img2,lang, voice_index=0)
+    goofy_tts(text, label, img1, img2, lang, voice_index=0)
 
-def start_gui(text,lang='en'):
-    speak(label, img1, img2, text,lang)
 
+def start_gui(text, lang='en'):
+    speak(label, img1, img2, text, lang)
 
 
 def startGame():
@@ -126,7 +156,6 @@ def startGame():
     # Receive and speak the login message.
     login_text = client_socket.recv(2048).decode()
     start_gui(login_text)
-
 
     name = get_input()  # Wait until the user presses Send.
     print(f"Name entered: {name}")
@@ -148,8 +177,7 @@ def startGame():
     start_gui(say_text)
     translated_word = client_socket.recv(2048).decode()
     lang = client_socket.recv(2048).decode()
-    #say the translated word in the specified language
-    start_gui(translated_word,lang)
+    start_gui(text=translated_word, lang=lang)
 
     guess_the_lang_text = client_socket.recv(2048).decode()
     start_gui(guess_the_lang_text)
@@ -158,11 +186,10 @@ def startGame():
     guess = get_input()
     client_socket.send(guess.encode())
 
-    
     result = client_socket.recv(2048).decode()
-    start_gui(result) 
+    start_gui(result)
     start_gui(f"{name} - wins: {data[name][0]} loses: {data[name][1]}")
-    start_gui("do you want to play another game?")        
+    start_gui("Do you want to play another game?")
     client_socket.close()
 
     time.sleep(1)
@@ -170,31 +197,23 @@ def startGame():
     client_socket.connect(('127.0.0.1', port))
     replay_prompt = client_socket.recv(2048).decode()
 
-
     response = get_input()
     client_socket.send(response.encode())
     with open("database.json", 'r') as file:
         data = json.load(file)
 
-    
     if response.lower() == "yes":
-
         client_socket.close()
         time.sleep(1)
         startGame()  # Restart the game
     else:
-        start_gui("thank you for playing")
+        start_gui("Thank you for playing")
         time.sleep(1)
         root.quit()
         sys.exit(0)
 
-        
-
     # Refresh and show updated stats.
-    
     client_socket.close()
-
-    # Ask the user if they want to play again.
 
 
 #############################################

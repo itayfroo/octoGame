@@ -4,12 +4,13 @@ import asyncio
 from googletrans import Translator
 import random
 import time
+import pickle
 class Game:
 
 
      def __init__(self):
           self.player = None
-          self.rnd= random.randint(0,102)
+          self.rnd= random.randint(0,62)
           self.languages = None
           Game.GetLangs(self)
           self.languagesNames = list(self.languages.keys())
@@ -65,15 +66,17 @@ class Game:
                conn.send("Say the text to translate in English: ".encode())
                word = conn.recv(2048).decode()
                conn.send( f"{word} in another language is: ".encode())
-               conn.send(f"{asyncio.run(self.translate_text(word))})".encode())
+               translatedword=asyncio.run(self.translate_text(word))
+               print(translatedword)
+               conn.send(translatedword.encode())
                conn.send(f"{self.lang}".encode())
                conn.send(f"\nGuess the language of the translated text!\nChoose the correct language of the following: ".encode())
 
                options = [self.languagesNames[self.rnd]]
                for i in range(3):
-                    newlang= self.languagesNames[random.randint(0,102)]
+                    newlang= self.languagesNames[random.randint(0,62)]
                     while newlang in options:
-                         newlang = self.languagesNames[random.randint(0, 102)]
+                         newlang = self.languagesNames[random.randint(0, 62)]
                     options.append(newlang)
 
                random.shuffle(options)
