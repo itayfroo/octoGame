@@ -4,6 +4,7 @@ import asyncio
 from googletrans import Translator
 import random
 import time
+
 class Game:
 
 

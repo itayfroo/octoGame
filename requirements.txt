@@ -1,0 +1,6 @@
+googletrans
+pyttsx3
+gtts
+pygame
+pillow
+pywin32
