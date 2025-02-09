@@ -4,7 +4,6 @@ import asyncio
 from googletrans import Translator
 import random
 import time
-
 class Game:
 
 
@@ -64,8 +63,11 @@ class Game:
                with open("database.json", 'w') as file:  # Write the modified data back to the file
                     json.dump(data, file, indent=4)
                conn.send("Say the text to translate in English: ".encode())
-               text = conn.recv(2048).decode()
-               conn.send( f"{text} in another language is: {asyncio.run(self.translate_text(text))}\nGuess the language of the translated text!\nChoose the correct language of the following: ".encode())
+               word = conn.recv(2048).decode()
+               conn.send( f"{word} in another language is: ".encode())
+               conn.send(f"{asyncio.run(self.translate_text(word))})".encode())
+               conn.send(f"{self.lang}".encode())
+               conn.send(f"\nGuess the language of the translated text!\nChoose the correct language of the following: ".encode())
 
                options = [self.languagesNames[self.rnd]]
                for i in range(3):

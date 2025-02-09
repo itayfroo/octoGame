@@ -8,7 +8,7 @@ import pygame
 import threading
 import tkinter as tk
 from PIL import Image, ImageTk
-import pythoncom  # Import pythoncom to initialize COM for TTS
+import pythoncom
 import sys
 
 # Create the Tkinter window.
@@ -92,7 +92,7 @@ def animate_images(label, img1, img2, speaking):
     # Reset to the default image when done.
     label.config(image=img1)
 
-def goofy_tts(text, label, img1, img2, voice_index=0, lang="en", use_gtts=False):
+def goofy_tts(text, label, img1, img2, lang="en", voice_index=0, use_gtts=False):
     """Start animation and TTS in separate threads."""
     speaking = [True]
     threading.Thread(target=animate_images, args=(label, img1, img2, speaking), daemon=True).start()
@@ -101,17 +101,14 @@ def goofy_tts(text, label, img1, img2, voice_index=0, lang="en", use_gtts=False)
     else:
         threading.Thread(target=pyttsx3_tts, args=(text, voice_index, speaking), daemon=True).start()
 
-def speak(label, img1, img2, text):
+def speak(label, img1, img2, text,lang):
     """Convenience wrapper to start the TTS and image animation."""
-    goofy_tts(text, label, img1, img2, voice_index=0)
+    goofy_tts(text, label, img1, img2,lang, voice_index=0)
 
-def start_gui(text):
-    """Update the GUI with TTS. (Does not call mainloop.)"""
-    speak(label, img1, img2, text)
+def start_gui(text,lang='en'):
+    speak(label, img1, img2, text,lang)
 
-#############################################
-# Main Game Function
-#############################################
+
 
 def startGame():
     global label
@@ -140,17 +137,24 @@ def startGame():
     with open("database.json", 'r') as file:
         data = json.load(file)
 
-    # Game round 1: prompt for a word.
-    prompt = client_socket.recv(2048).decode()
-    start_gui(prompt)
+    # Game round 1: ask_for_input for a word.
+    ask_for_input = client_socket.recv(2048).decode()
+    start_gui(ask_for_input)
     word = get_input()
     client_socket.send(word.encode())
 
-    # Game round 2: two prompts before guessing.
-    prompt1 = client_socket.recv(2048).decode()
-    start_gui(prompt1)
-    prompt2 = client_socket.recv(2048).decode()
-    start_gui(prompt2)
+    # Game round 3: two prompts before guessing.
+    say_text = client_socket.recv(2048).decode()
+    start_gui(say_text)
+    translated_word = client_socket.recv(2048).decode()
+    lang = client_socket.recv(2048).decode()
+    #say the translated word in the specified language
+    start_gui(translated_word,lang)
+
+    guess_the_lang_text = client_socket.recv(2048).decode()
+    start_gui(guess_the_lang_text)
+    options = client_socket.recv(2048).decode()
+    start_gui(options)
     guess = get_input()
     client_socket.send(guess.encode())
 
