@@ -176,6 +176,7 @@ def startGame():
     say_text = client_socket.recv(2048).decode()
     start_gui(say_text)
     translated_word = client_socket.recv(2048).decode()
+    time.sleep(1)
     lang = client_socket.recv(2048).decode()
     start_gui(text=translated_word, lang=lang)
 
