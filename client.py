@@ -1,228 +1,115 @@
 import json
 import socket
+import asyncio
+from googletrans import Translator
+import random
 import time
-import pyttsx3
-from gtts import gTTS
-import io
-import pygame
-import threading
-import tkinter as tk
-from PIL import Image, ImageTk
-import pythoncom
-import sys
-from gtts.lang import tts_langs  # Import the supported languages from gTTS
-from gtts import lang
-
-# Create the Tkinter window.
-root = tk.Tk()
-root.title("TTS Animation")
-
-# Load and keep images in memory.
-img1 = ImageTk.PhotoImage(Image.open("octo.png"))  # Replace with your actual image path.
-img2 = ImageTk.PhotoImage(Image.open("open_mouth.png"))
-label = tk.Label(root, image=img1)
-label.pack()
-
-# Create an entry widget for user input.
-user_input_var = tk.StringVar()
-text_box = tk.Entry(root, textvariable=user_input_var, width=40)
-text_box.pack()
-
-# We’ll use a threading.Event to signal that input is ready.
-input_event = threading.Event()
-# Global variable to hold the input string.
-input_value = ""
+import pickle
 
 
-def send_input():
-    """Called when the user clicks the Send button.
-    This stores the complete entry text into input_value,
-    clears the entry widget, and sets the event flag."""
-    global input_value
-    input_value = user_input_var.get()
-    user_input_var.set("")  # Clear the entry box.
-    input_event.set()  # Signal that input is ready.
+class Game:
 
+    def __init__(self):
+        self.player = None
+        self.rnd = random.randint(0, 62)
+        self.languages = None
+        Game.GetLangs(self)
+        self.languagesNames = list(self.languages.keys())
+        self.lang = self.languages[str(self.languagesNames[self.rnd])]
+        self.done = Game.Handle_Sockets(self)
+        if self.done:
+            sock = socket.socket()
+            sock.bind(('', 5555))
+            while True:
+                sock.listen(5)
+                conn, clt_address = sock.accept()
+                print('now: ', clt_address)
+                conn.send(f"Do you want to play another game?".encode())
+                answer = conn.recv(2048).decode()
+                if answer == "yes":
+                    sock.close()
+                    time.sleep(1)
+                    Game.__init__(self)
+                else:
+                    sock.close()
+                    exit()
 
-# The Send button uses the above callback.
-send_button = tk.Button(root, text="Send", command=send_input)
-send_button.pack()
+    def GetLangs(self) -> None:
+        with open("langs.json", "r") as file:
+            langs = json.load(file)
+        self.languages = langs
 
+    async def translate_text(self, text: str) -> str:
+        translator = Translator()
+        result = await translator.translate(text, dest=self.lang)
+        return (result.text)
 
-def get_input():
-    """Waits until the Send button has been pressed and then returns the input."""
-    input_event.wait()  # Block until the event is set.
-    value = input_value  # Retrieve the stored input.
-    input_event.clear()  # Reset the event for future input.
-    return value
+    def Handle_Sockets(self) -> True:
+        new_socket = socket.socket()
+        port = 5555
+        new_socket.bind(('', port))
+        new_socket.listen(5)
+        while True:
+            conn, clt_address = new_socket.accept()
+            print('Connection established: ', clt_address)
+            conn.send("State your username ".encode())
+            self.player = conn.recv(2048).decode()
+            with open("database.json", 'r') as file:
+                data = json.load(file)
 
+            if self.player not in data.keys():
+                data[self.player] = [0, 0]
 
-#############################################
-# TTS and Animation Functions
-#############################################
+            with open("database.json", 'w') as file:  # Write the modified data back to the file
+                json.dump(data, file, indent=4)
+            conn.send("Say the text to translate in English: ".encode())
+            word = conn.recv(2048).decode()
+            conn.send(f"{word} in another language is: ".encode())
+            translatedword = asyncio.run(self.translate_text(word))
+            print(translatedword)
+            conn.send(translatedword.encode())
+            conn.send(f"{self.lang}".encode())
+            conn.send(
+                f"\nGuess the language of the translated text!\nChoose the correct language of the following: ".encode())
 
-def pyttsx3_tts(text, voice_index, speaking):
-    """Function for TTS using pyttsx3"""
-    pythoncom.CoInitialize()  # Initialize COM in the new thread
-    engine = pyttsx3.init()
-    voices = engine.getProperty('voices')
-    if 0 <= voice_index < len(voices):
-        engine.setProperty('voice', voices[voice_index].id)
-    engine.setProperty('rate', 250)
-    engine.say(text)
-    engine.runAndWait()
-    speaking[0] = False  # Stop the animation
+            options = [self.languagesNames[self.rnd]]
+            for i in range(3):
+                newlang = self.languagesNames[random.randint(0, 62)]
+                while newlang in options:
+                    newlang = self.languagesNames[random.randint(0, 62)]
+                options.append(newlang)
 
+            random.shuffle(options)
 
-def gtts_tts(text, lang_code, speaking):
-    """Function for TTS using gTTS"""
-    try:
-        # Check if language code is supported
-        if lang_code not in lang.tts_langs():
-            raise ValueError(f"Unsupported language: {lang_code}")
+            answer = 0
 
-        tts = gTTS(text=text, lang=lang_code)
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        pygame.mixer.init()
-        pygame.mixer.music.load(fp, 'mp3')
-        pygame.mixer.music.play()
+            for i in range(4):
+                if options[i] == self.languagesNames[self.rnd]:
+                    answer = i
+                    break
+            conn.send(f"1. {options[0]}\n2. {options[1]}\n3. {options[2]}\n4. {options[3]}\nThe answer is: ".encode())
+            print(f"correct answer: {answer + 1}")
+            guess = conn.recv(2048).decode()
+            if int(guess) == answer + 1:
+                conn.send("Correct!".encode())
+                with open("database.json", 'r') as file:
+                    data = json.load(file)
+                    data[self.player][0] += 1  # Initialize the list for the player
 
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)
+                with open("database.json", 'w') as file:  # Write the modified data back to the file
+                    json.dump(data, file, indent=4)
+            else:
+                conn.send(f"Incorrect! language is {self.languagesNames[self.rnd]}".encode())
+                with open("database.json", 'r') as file:
+                    data = json.load(file)
+                    data[self.player][1] += 1
 
-    except ValueError as e:
-        print(e)  # Log the unsupported language
-        # Default to English if the language is unsupported
-        tts = gTTS(text=text, lang='en')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        pygame.mixer.init()
-        pygame.mixer.music.load(fp, 'mp3')
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)
+                with open("database.json", 'w') as file:  # Write the modified data back to the file
+                    json.dump(data, file, indent=4)
 
-    speaking[0] = False  # Stop the animation
+            conn.close()
+            return True
 
-
-def animate_images(label, img1, img2, speaking):
-    """While speaking, alternate between two images for a talking animation."""
-    while speaking[0]:
-        label.config(image=img1)
-        label.update()
-        time.sleep(0.35)
-        label.config(image=img2)
-        label.update()
-        time.sleep(0.35)
-    # Reset to the default image when done.
-    label.config(image=img1)
-
-
-def goofy_tts(text, label, img1, img2, lang="en", voice_index=0, use_gtts=True):
-    """Start animation and TTS in separate threads."""
-    speaking = [True]
-    threading.Thread(target=animate_images, args=(label, img1, img2, speaking), daemon=True).start()
-    if use_gtts:
-        threading.Thread(target=gtts_tts, args=(text, lang, speaking), daemon=True).start()
-    else:
-        threading.Thread(target=pyttsx3_tts, args=(text, voice_index, speaking), daemon=True).start()
-
-
-def speak(label, img1, img2, text, lang):
-    """Convenience wrapper to start the TTS and image animation."""
-    goofy_tts(text, label, img1, img2, lang, voice_index=0)
-
-
-def start_gui(text, lang='en'):
-    speak(label, img1, img2, text, lang)
-
-
-def startGame():
-    global label
-
-    # Re-create the label to avoid duplication.
-    if label:
-        label.destroy()
-    label = tk.Label(root, image=img1)
-    label.pack()
-
-    client_socket = socket.socket()
-    port = 5555
-    client_socket.connect(('127.0.0.1', port))
-
-    # Receive and speak the login message.
-    login_text = client_socket.recv(2048).decode()
-    start_gui(login_text)
-
-    name = get_input()  # Wait until the user presses Send.
-    print(f"Name entered: {name}")
-    client_socket.send(name.encode())
-    time.sleep(1)
-
-    # Load and display the user's win/lose record.
-    with open("database.json", 'r') as file:
-        data = json.load(file)
-
-    # Game round 1: ask_for_input for a word.
-    ask_for_input = client_socket.recv(2048).decode()
-    start_gui(ask_for_input)
-    word = get_input()
-    client_socket.send(word.encode())
-
-    # Game round 3: two prompts before guessing.
-    say_text = client_socket.recv(2048).decode()
-    start_gui(say_text)
-    translated_word = client_socket.recv(2048).decode()
-    time.sleep(1)
-    lang = client_socket.recv(2048).decode()
-    start_gui(text=translated_word, lang=lang)
-
-    guess_the_lang_text = client_socket.recv(2048).decode()
-    start_gui(guess_the_lang_text)
-    options = client_socket.recv(2048).decode()
-    start_gui(options)
-    guess = get_input()
-    client_socket.send(guess.encode())
-
-    result = client_socket.recv(2048).decode()
-    start_gui(result)
-    start_gui(f"{name} - wins: {data[name][0]} loses: {data[name][1]}")
-    start_gui("Do you want to play another game?")
-    client_socket.close()
-
-    time.sleep(1)
-    client_socket = socket.socket()
-    client_socket.connect(('127.0.0.1', port))
-    replay_prompt = client_socket.recv(2048).decode()
-
-    response = get_input()
-    client_socket.send(response.encode())
-    with open("database.json", 'r') as file:
-        data = json.load(file)
-
-    if response.lower() == "yes":
-        client_socket.close()
-        time.sleep(1)
-        startGame()  # Restart the game
-    else:
-        start_gui("Thank you for playing")
-        time.sleep(1)
-        root.quit()
-        sys.exit(0)
-
-    # Refresh and show updated stats.
-    client_socket.close()
-
-
-#############################################
-# Start the Application
-#############################################
 
 if __name__ == "__main__":
-    # Run the game logic in a separate thread.
-    threading.Thread(target=startGame, daemon=True).start()
-    # Start the Tkinter event loop (must run in main thread).
-    root.mainloop()
+    game = Game()
